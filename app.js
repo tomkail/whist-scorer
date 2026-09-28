@@ -118,7 +118,7 @@ function gameHTML(){
     ${ranked.map((i,k)=>`<div class="stand ${tot[i]===best&&ri>0?'lead':''}"><span class="pos">${k+1}</span><span class="nm">${nm(i)}</span><span class="pts">${tot[i]}</span></div>`).join('')}
   </section>`;
 
-  const history = ri ? `<section class="card"><h2>Rounds</h2><div class="scroll"><table>
+  const history = ri ? `<section class="card hist"><h2>Rounds</h2><div class="scroll"><table>
     <thead><tr><th>Cards</th>${S.players.map((_,i)=>`<th>${nm(i)}</th>`).join('')}</tr></thead>
     <tbody>${S.rounds.map(r=>`<tr><td>${r.cards}</td>${S.players.map((_,i)=>`<td class="${r.bids[i]===r.tricks[i]?'made':''}"><span class="s">${score(r,i)}</span><span class="bt">${r.bids[i]}/${r.tricks[i]}</span></td>`).join('')}</tr>`).join('')}</tbody>
     <tfoot><tr><td>Total</td>${tot.map(t=>`<td>${t}</td>`).join('')}</tr></tfoot>
@@ -129,12 +129,39 @@ function gameHTML(){
     <button class="secondary" data-act="newgame">New game</button>
   </div>`;
 
-  return `<div class="game"><div class="col">${top}</div><div class="col">${standings}${history}${foot}</div></div>`;
+  // Once the game is over there's nothing to enter, so scores join the result and history gets a column to itself
+  const [a, b] = done ? [top + standings, history + foot] : [top, standings + history + foot];
+  return `<div class="game"><div class="col">${a}</div><div class="col">${b}</div></div>`;
 }
 
 function render(){
   document.getElementById('app').innerHTML = S.phase==='setup' ? setupHTML() : gameHTML();
+  fit();
   save();
+}
+
+// On tablets and desktops, keep everything on one screen: the round history scrolls
+// inside its card, and if that isn't enough the whole UI shrinks until it fits.
+const FIT = matchMedia('(min-width:700px) and (min-height:560px)');
+const MIN_FS = 14;
+function fit(){
+  const root = document.documentElement, main = document.getElementById('app');
+  root.classList.toggle('fit', FIT.matches);
+  root.style.removeProperty('--fs');
+  if(FIT.matches){
+    const fits = () => main.scrollHeight <= main.clientHeight + 1;
+    if(!fits()){
+      let lo = MIN_FS, hi = parseFloat(getComputedStyle(root).fontSize);
+      while(hi - lo > 0.25){
+        const m = (lo + hi) / 2;
+        root.style.setProperty('--fs', m + 'px');
+        if(fits()) lo = m; else hi = m;
+      }
+      root.style.setProperty('--fs', lo + 'px');
+    }
+  }
+  const sc = main.querySelector('.hist .scroll');
+  if(sc) sc.scrollTop = sc.scrollHeight;
 }
 
 function bump(k, d){
@@ -187,5 +214,9 @@ document.addEventListener('change', e => {
   const k = e.target.dataset && e.target.dataset.set;
   if(k){ S.settings[k] = e.target.checked; render(); }
 });
+
+addEventListener('resize', fit);
+FIT.addEventListener('change', fit);
+if(document.fonts) document.fonts.ready.then(fit);
 
 render();
