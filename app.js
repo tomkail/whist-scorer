@@ -4,7 +4,7 @@ let S = load() || fresh();
 
 function fresh(){
   return {players:['',''], phase:'setup', rounds:[], cur:null,
-    settings:{maxCards:7, pattern:'downup', bonus:10, perTrick:1, onlyIfMade:false, hook:true, trumps:true}};
+    settings:{maxCards:13, pattern:'down', bonus:10, perTrick:1, onlyIfMade:false, hook:true, trumps:true}};
 }
 function load(){ try{ const v = localStorage.getItem(KEY); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
@@ -26,7 +26,13 @@ function score(r,i){
 }
 function totals(){ return S.players.map((_,i) => S.rounds.reduce((a,r) => a + score(r,i), 0)); }
 function newCur(){ const n = S.players.length; return {bids:Array(n).fill(0), tricks:Array(n).fill(0)}; }
-function capCards(){ return Math.floor(52 / Math.max(S.players.length, 2)); }
+const DECK = 52, MAX_CARDS = 26;
+function capCards(){ return Math.floor(DECK / Math.max(S.players.length, 2)); }
+function deckWarning(){
+  const n = S.players.length, m = S.settings.maxCards, need = n * m;
+  if(need <= DECK) return '';
+  return `<p class="alert">${n} players × ${m} cards needs ${need} cards, more than a standard ${DECK}-card deck. Use ${Math.ceil(need/DECK)} decks, or deal at most ${capCards()}.</p>`;
+}
 
 function stepper(key, val, lo, hi){
   return `<div class="step"><button data-act="dec" data-k="${key}" aria-label="Decrease" ${val<=lo?'disabled':''}>−</button><output>${val}</output><button data-act="inc" data-k="${key}" aria-label="Increase" ${val>=hi?'disabled':''}>+</button></div>`;
@@ -38,13 +44,15 @@ function toggle(k, label, on){
 function setupHTML(){
   const s = S.settings, n = S.players.length, sq = seq();
   return `<h1>Whist</h1>
+  <div class="setup">
   <section class="card"><h2>Players</h2>
     <p class="hint">In seating order, clockwise. The first player deals first.</p>
     ${S.players.map((p,i)=>`<div class="row"><input class="name" data-i="${i}" value="${esc(p)}" placeholder="Player ${i+1}" autocomplete="off" autocapitalize="words"><button class="icon" data-act="rm" data-i="${i}" ${n<=2?'disabled':''} aria-label="Remove player">✕</button></div>`).join('')}
     ${n<7?`<button class="ghost" data-act="add">Add player</button>`:''}
   </section>
   <section class="card"><h2>Rounds</h2>
-    <div class="field"><span>Most cards dealt</span>${stepper('max', s.maxCards, 1, capCards())}</div>
+    <div class="field"><span>Most cards dealt</span>${stepper('max', s.maxCards, 1, MAX_CARDS)}</div>
+    ${deckWarning()}
     <div class="field col"><span>Order</span><div class="seg">
       ${[['down','Down'],['downup','Down, up'],['updown','Up, down'],['up','Up']].map(([k,l])=>`<button data-act="pat" data-k="${k}" class="${s.pattern===k?'on':''}">${l}</button>`).join('')}
     </div></div>
@@ -57,7 +65,8 @@ function setupHTML(){
     ${toggle('hook',"Dealer can't make bids add up to the cards", s.hook)}
     ${toggle('trumps','Show trump suit each round', s.trumps)}
   </section>
-  <button class="primary" data-act="start">Start game</button>`;
+  </div>
+  <button class="primary start" data-act="start">Start game</button>`;
 }
 
 function gameHTML(){
@@ -120,7 +129,7 @@ function gameHTML(){
     <button class="secondary" data-act="newgame">New game</button>
   </div>`;
 
-  return top + standings + history + foot;
+  return `<div class="game"><div class="col">${top}</div><div class="col">${standings}${history}${foot}</div></div>`;
 }
 
 function render(){
@@ -130,7 +139,7 @@ function render(){
 
 function bump(k, d){
   const s = S.settings;
-  if(k==='max') s.maxCards = clamp(s.maxCards + d, 1, capCards());
+  if(k==='max') s.maxCards = clamp(s.maxCards + d, 1, MAX_CARDS);
   else if(k==='bonus') s.bonus = clamp(s.bonus + d, 0, 50);
   else if(k==='per') s.perTrick = clamp(s.perTrick + d, 0, 10);
   else {
@@ -142,14 +151,13 @@ function bump(k, d){
 
 function act(a, d){
   switch(a){
-    case 'add': S.players.push(''); S.settings.maxCards = clamp(S.settings.maxCards,1,capCards()); break;
+    case 'add': S.players.push(''); break;
     case 'rm': S.players.splice(+d.i,1); break;
     case 'pat': S.settings.pattern = d.k; break;
     case 'inc': bump(d.k, 1); break;
     case 'dec': bump(d.k, -1); break;
     case 'start':
       S.players = S.players.map((p,i)=>p.trim() || `Player ${i+1}`);
-      S.settings.maxCards = clamp(S.settings.maxCards,1,capCards());
       S.rounds = []; S.cur = newCur(); S.phase = 'bid'; window.scrollTo(0,0); break;
     case 'lock': S.cur.tricks = [...S.cur.bids]; S.phase = 'tricks'; break;
     case 'back': S.phase = 'bid'; break;
