@@ -1,6 +1,9 @@
-const KEY = 'whist-scorer-v1';
+const KEY = 'whist-scorer-v1', HKEY = 'whist-scorer-history-v1';
 const TRUMPS = [['♥','Hearts',1],['♣','Clubs',0],['♦','Diamonds',1],['♠','Spades',0],['','No trumps',0]];
 let S = load() || fresh();
+if(!S.id) S.id = newId();
+let H = loadHistory();       // past games, newest first
+let view = null, sheet = null; // screen and open dialog; not saved
 
 function fresh(){
   return {players:['',''], phase:'setup', rounds:[], cur:null,
@@ -8,6 +11,21 @@ function fresh(){
 }
 function load(){ try{ const v = localStorage.getItem(KEY); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
+function loadHistory(){ try{ return JSON.parse(localStorage.getItem(HKEY)) || []; }catch(e){ return []; } }
+function saveHistory(){ try{ localStorage.setItem(HKEY, JSON.stringify(H)); }catch(e){} }
+function newId(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+// Save the current game to past games, replacing any earlier copy of it
+function archive(){
+  if(!S.rounds.length) return;
+  const g = {id:S.id, date:new Date().toISOString(), players:[...S.players], settings:{...S.settings},
+    rounds:S.rounds.map(r => ({...r})), total:seq().length};
+  H = [g, ...H.filter(x => x.id !== S.id)].slice(0, 200);
+  saveHistory();
+}
+function unarchive(){ H = H.filter(x => x.id !== S.id); saveHistory(); }
+function endGame(){ S.rounds = []; S.cur = null; S.phase = 'setup'; view = null; }
+const names = a => a.length > 1 ? `${a.slice(0,-1).join(', ')} and ${a[a.length-1]}` : a[0];
 const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -20,14 +38,16 @@ function seq(){
   if(p==='downup') return down.concat(up.slice(1));
   return up.concat(down.slice(1));
 }
-function score(r,i){
-  const s = S.settings, b = r.bids[i], t = r.tricks[i], made = b===t;
+function score(r, i, s = S.settings){
+  const b = r.bids[i], t = r.tricks[i], made = b===t;
   return (made ? s.bonus : 0) + ((s.onlyIfMade && !made) ? 0 : t * s.perTrick);
 }
 // Competition ranking, so tied players share a place (1, 1, 3)
 const places = arr => arr.map(v => 1 + arr.filter(x => x > v).length);
 const ORD = ['','1st','2nd','3rd'];
-function totals(){ return S.players.map((_,i) => S.rounds.reduce((a,r) => a + score(r,i), 0)); }
+function totals(players = S.players, rounds = S.rounds, s = S.settings){
+  return players.map((_,i) => rounds.reduce((a,r) => a + score(r,i,s), 0));
+}
 function newCur(){ const n = S.players.length; return {bids:Array(n).fill(0), tricks:Array(n).fill(0)}; }
 const DECK = 52, MAX_CARDS = 26;
 function capCards(){ return Math.floor(DECK / Math.max(S.players.length, 2)); }
@@ -37,9 +57,9 @@ function deckWarning(){
   return `<p class="alert">${n} players × ${m} cards needs ${need} cards, more than a standard ${DECK}-card deck. Use ${Math.ceil(need/DECK)} decks, or deal at most ${capCards()}.</p>`;
 }
 
-const initial = i => esc((S.players[i] || '').trim().charAt(0).toUpperCase()) || i + 1;
+const initial = (i, players = S.players) => esc((players[i] || '').trim().charAt(0).toUpperCase()) || i + 1;
 // Each player keeps a colour (by seat) so they're easy to find across the whole screen
-const av = i => `<span class="av pc${i % 7}" aria-hidden="true">${initial(i)}</span>`;
+const av = (i, players) => `<span class="av pc${i % 7}" aria-hidden="true">${initial(i, players)}</span>`;
 
 function stepper(key, val, lo, hi){
   return `<div class="step"><button data-act="dec" data-k="${key}" aria-label="Decrease" ${val<=lo?'disabled':''}>−</button><output>${val}</output><button data-act="inc" data-k="${key}" aria-label="Increase" ${val>=hi?'disabled':''}>+</button></div>`;
@@ -50,7 +70,7 @@ function toggle(k, label, on){
 
 function setupHTML(){
   const s = S.settings, n = S.players.length, sq = seq();
-  return `<h1>Whist</h1>
+  return `<div class="titlebar"><h1>Whist</h1>${H.length ? `<button class="secondary" data-act="history">Past games · ${H.length}</button>` : ''}</div>
   <div class="setup">
   <section class="card"><h2>Players</h2>
     <p class="hint">In seating order, clockwise. The first player deals first.</p>
@@ -83,7 +103,7 @@ function gameHTML(){
 
   if(done){
     const best = Math.max(...tot), winners = S.players.filter((_,i)=>tot[i]===best).map(esc);
-    top = `<section class="card over"><div class="eyebrow">Game over</div><div class="w">${winners.join(' & ')} ${winners.length>1?'win':'wins'}</div><div class="hint">${best} points</div></section>`;
+    top = `<section class="card over"><div class="eyebrow">Game over</div><div class="w">${names(winners)} ${winners.length>1?'win':'wins'}</div><div class="hint">${best} points</div></section>`;
   } else {
     const cards = sq[ri], dealer = ri % n, c = S.cur;
     const order = [...Array(n)].map((_,k)=>(dealer+1+k)%n);
@@ -125,18 +145,11 @@ function gameHTML(){
     ${ranked.map((i,k)=>`<div class="stand ${tot[i]===best&&ri>0?'lead':''}"><span class="pos">${place[i]}</span>${av(i)}<span class="nm">${nm(i)}</span><span class="pts">${tot[i]}</span></div>`).join('')}
   </section>`;
 
-  const history = ri ? `<section class="card hist"><h2>Rounds</h2><div class="scroll"><table>
-    <thead><tr><th>Round</th>${S.players.map((_,i)=>`<th class="pc${i % 7}">${nm(i)}</th>`).join('')}</tr></thead>
-    <tbody>${S.rounds.map((r,k)=>{
-      const pts = S.players.map((_,i)=>score(r,i)), top = Math.max(...pts), tr = TRUMPS[k % TRUMPS.length];
-      const suit = S.settings.trumps ? `<span class="suit ${tr[2]?'red':''}">${tr[0] || 'NT'}</span>` : '';
-      return `<tr><td>${r.cards}${suit}</td>${pts.map((p,i)=>`<td class="${r.bids[i]===r.tricks[i]?'made':''} ${p===top&&top>0?'top':''}"><span class="s">${p}</span><span class="bt">${r.bids[i]}/${r.tricks[i]}</span></td>`).join('')}</tr>`;
-    }).join('')}</tbody>
-    <tfoot><tr><td>Total</td>${tot.map((t,i)=>`<td class="${place[i]<=3?'p'+place[i]:''}"><span class="place">${ORD[place[i]] || ''}</span><span class="t">${t}</span></td>`).join('')}</tr></tfoot>
-  </table></div><p class="hint">Small figures are bid / tricks won. Highlighted: top score that round.</p></section>` : '';
+  const history = ri ? `<section class="card hist"><h2>Rounds</h2><div class="scroll">${scoreTable(S.players, S.rounds, S.settings)}</div>
+    <p class="hint">Small figures are bid / tricks won. Highlighted: top score that round.</p></section>` : '';
 
   const foot = `<div class="foot">
-    <button class="secondary" data-act="undo" ${ri===0&&S.phase==='bid'?'disabled':''}>Undo</button>
+    <button class="secondary" data-act="undo" ${ri===0&&S.phase==='bid'?'disabled':''}>${undoLabel()}</button>
     <button class="secondary" data-act="newgame">New game</button>
   </div>`;
 
@@ -145,10 +158,86 @@ function gameHTML(){
   return `<div class="game"><div class="col">${a}</div><div class="col">${b}</div></div>`;
 }
 
+// Say exactly what Undo will do: step back from tricks to bids, or reopen the last scored round
+function undoLabel(){
+  if(S.phase === 'tricks') return 'Undo bids';
+  return S.rounds.length ? `Undo round ${S.rounds.length}` : 'Undo';
+}
+
+function scoreTable(players, rounds, s){
+  const tot = totals(players, rounds, s), place = places(tot);
+  return `<table>
+    <thead><tr><th>Round</th>${players.map((p,i)=>`<th class="pc${i % 7}">${esc(p)}</th>`).join('')}</tr></thead>
+    <tbody>${rounds.map((r,k)=>{
+      const pts = players.map((_,i)=>score(r,i,s)), top = Math.max(...pts), tr = TRUMPS[k % TRUMPS.length];
+      const suit = s.trumps ? `<span class="suit ${tr[2]?'red':''}">${tr[0] || 'NT'}</span>` : '';
+      return `<tr><td>${r.cards}${suit}</td>${pts.map((p,i)=>`<td class="${r.bids[i]===r.tricks[i]?'made':''} ${p===top&&top>0?'top':''}"><span class="s">${p}</span><span class="bt">${r.bids[i]}/${r.tricks[i]}</span></td>`).join('')}</tr>`;
+    }).join('')}</tbody>
+    <tfoot><tr><td>Total</td>${tot.map((t,i)=>`<td class="${place[i]<=3?'p'+place[i]:''}"><span class="place">${ORD[place[i]] || ''}</span><span class="t">${t}</span></td>`).join('')}</tr></tfoot>
+  </table>`;
+}
+
+function historyHTML(){
+  const date = iso => new Date(iso).toLocaleDateString(undefined, {weekday:'short', day:'numeric', month:'short', year:'numeric'});
+  const games = H.map(g => {
+    const tot = totals(g.players, g.rounds, g.settings), place = places(tot), best = Math.max(...tot);
+    const ranked = g.players.map((_,i)=>i).sort((a,b)=>tot[b]-tot[a]);
+    const winners = g.players.filter((_,i)=>tot[i]===best).map(esc);
+    const done = g.rounds.length >= g.total;
+    return `<section class="card rec">
+      <div class="rec-head"><div><div class="eyebrow">${date(g.date)}</div>
+        <div class="rec-w">${names(winners)} ${winners.length>1?'win':'wins'}</div>
+        <div class="hint">${done ? `${g.rounds.length} rounds` : `Ended after ${g.rounds.length} of ${g.total} rounds`}</div></div>
+        <button class="link danger" data-act="del" data-id="${g.id}">Delete</button></div>
+      ${ranked.map(i=>`<div class="stand ${tot[i]===best?'lead':''}"><span class="pos">${place[i]}</span>${av(i, g.players)}<span class="nm">${esc(g.players[i])}</span><span class="pts">${tot[i]}</span></div>`).join('')}
+      <details><summary>Show rounds</summary><div class="scroll">${scoreTable(g.players, g.rounds, g.settings)}</div></details>
+    </section>`;
+  }).join('');
+  return `<div class="titlebar"><h1>Past games</h1><button class="secondary" data-act="setup">Done</button></div>
+    ${H.length ? `<div class="past">${games}</div>` : `<section class="card"><p class="hint">Finished games will appear here.</p></section>`}`;
+}
+
+function sheetHTML(){
+  if(!sheet) return '';
+  let title, body, btns, cancel = 'Cancel';
+  if(sheet.kind === 'end'){
+    const n = S.rounds.length, total = seq().length;
+    cancel = 'Keep playing';
+    if(n >= total){
+      title = 'Start a new game?'; cancel = 'Cancel';
+      body = 'This game is saved in past games.';
+      btns = `<button class="primary" data-act="end-discard">Start new game</button>`;
+    } else {
+      title = 'End this game?';
+      body = n ? `You've played ${n} of ${total} rounds.` : 'No rounds have been scored yet.';
+      btns = n ? `<button class="primary" data-act="end-save">Save to past games</button><button class="sbtn danger" data-act="end-discard">End without saving</button>`
+               : `<button class="sbtn danger" data-act="end-discard">Back to setup</button>`;
+    }
+  } else if(sheet.kind === 'undo'){
+    const ri = S.rounds.length;
+    if(S.phase === 'tricks'){
+      title = 'Undo bids?';
+      body = "You'll go back to bidding for this round. The bids you entered stay filled in.";
+    } else {
+      title = `Undo round ${ri}?`;
+      body = `Round ${ri} (${S.rounds[ri-1].cards} card${S.rounds[ri-1].cards>1?'s':''}) will be reopened so you can correct the tricks. Its scores are removed until you score it again.`;
+    }
+    btns = `<button class="sbtn danger" data-act="undo-yes">${undoLabel()}</button>`;
+  } else {
+    title = 'Delete this game?'; body = "It will be removed from past games. This can't be undone.";
+    btns = `<button class="sbtn danger" data-act="del-yes">Delete game</button>`;
+  }
+  return `<div class="scrim" data-act="cancel"></div>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-t"><h2 id="sheet-t">${title}</h2><p class="hint">${body}</p>${btns}<button class="sbtn" data-act="cancel">${cancel}</button></div>`;
+}
+
 function render(){
-  document.getElementById('app').innerHTML = S.phase==='setup' ? setupHTML() : gameHTML();
+  document.getElementById('app').innerHTML = view==='history' ? historyHTML() : S.phase==='setup' ? setupHTML() : gameHTML();
+  document.getElementById('sheet').innerHTML = sheetHTML();
   fit();
   save();
+  const first = document.querySelector('.sheet button');
+  if(first) first.focus();
 }
 
 // On tablets and desktops, keep everything on one screen: the round history scrolls
@@ -159,7 +248,7 @@ function fit(){
   const root = document.documentElement, main = document.getElementById('app');
   root.classList.toggle('fit', FIT.matches);
   root.style.removeProperty('--fs');
-  if(FIT.matches){
+  if(FIT.matches && view !== 'history'){
     const fits = () => main.scrollHeight <= main.clientHeight + 1;
     if(!fits()){
       let lo = MIN_FS, hi = parseFloat(getComputedStyle(root).fontSize);
@@ -196,19 +285,31 @@ function act(a, d){
     case 'dec': bump(d.k, -1); break;
     case 'start':
       S.players = S.players.map((p,i)=>p.trim() || `Player ${i+1}`);
-      S.rounds = []; S.cur = newCur(); S.phase = 'bid'; window.scrollTo(0,0); break;
+      S.id = newId(); S.rounds = []; S.cur = newCur(); S.phase = 'bid'; window.scrollTo(0,0); break;
     case 'lock': S.cur.tricks = [...S.cur.bids]; S.phase = 'tricks'; break;
     case 'back': S.phase = 'bid'; break;
     case 'score':
       S.rounds.push({cards: seq()[S.rounds.length], bids:[...S.cur.bids], tricks:[...S.cur.tricks]});
-      S.cur = newCur(); S.phase = 'bid'; window.scrollTo(0,0); break;
-    case 'undo':
+      S.cur = newCur(); S.phase = 'bid';
+      if(S.rounds.length >= seq().length) archive();
+      window.scrollTo(0,0); break;
+    case 'undo': sheet = {kind:'undo'}; break;
+    case 'undo-yes':
+      sheet = null;
       if(S.phase==='tricks'){ S.phase = 'bid'; }
-      else if(S.rounds.length){ const r = S.rounds.pop(); S.cur = {bids:r.bids, tricks:r.tricks}; S.phase = 'tricks'; }
+      else if(S.rounds.length){
+        if(S.rounds.length >= seq().length) unarchive();   // reopening a finished game
+        const r = S.rounds.pop(); S.cur = {bids:r.bids, tricks:r.tricks}; S.phase = 'tricks';
+      }
       break;
-    case 'newgame':
-      if(!confirm('End this game and go back to setup? Scores will be cleared.')) return;
-      S.rounds = []; S.cur = null; S.phase = 'setup'; break;
+    case 'newgame': sheet = {kind:'end'}; break;
+    case 'end-save': archive(); endGame(); sheet = null; break;
+    case 'end-discard': endGame(); sheet = null; break;
+    case 'cancel': sheet = null; break;
+    case 'history': view = 'history'; window.scrollTo(0,0); break;
+    case 'setup': view = null; break;
+    case 'del': sheet = {kind:'del', id:d.id}; break;
+    case 'del-yes': H = H.filter(g => g.id !== sheet.id); saveHistory(); sheet = null; if(!H.length) view = null; break;
   }
   render();
 }
@@ -217,6 +318,9 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-act]');
   if(!b || b.disabled) return;
   act(b.dataset.act, b.dataset);
+});
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape' && sheet){ sheet = null; render(); }
 });
 document.addEventListener('input', e => {
   if(e.target.classList.contains('name')){

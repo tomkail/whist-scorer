@@ -2,7 +2,7 @@
 :root{
   --bg:#f2f3f8; --ink:#111114; --mute:rgba(60,60,67,.62); --line:rgba(60,60,67,.14);
   --glass:rgba(255,255,255,.62); --glassEdge:rgba(255,255,255,.75); --stick:rgba(248,248,252,.94);
-  --shadow:0 8px 30px rgba(40,50,90,.10);
+  --shadow:0 8px 30px rgba(40,50,90,.10); --sheet:rgba(249,249,252,.9);
   --fill:rgba(120,120,128,.13); --fillPress:rgba(120,120,128,.26);
   --acc:#007aff; --accInk:#fff; --accTint:rgba(0,122,255,.13); --accText:#0062cc;
   --red:#ff3b30; --suitRed:#e0342b; --good:#248a3d; --goodFill:#34c759;
@@ -15,7 +15,7 @@
   :root:not([data-theme="light"]){
     --bg:#07080d; --ink:#f5f5f7; --mute:rgba(235,235,245,.6); --line:rgba(255,255,255,.12);
     --glass:rgba(38,38,48,.5); --glassEdge:rgba(255,255,255,.13); --stick:rgba(30,30,38,.96);
-    --shadow:0 8px 30px rgba(0,0,0,.4);
+    --shadow:0 8px 30px rgba(0,0,0,.4); --sheet:rgba(36,36,44,.9);
     --fill:rgba(255,255,255,.11); --fillPress:rgba(255,255,255,.22);
     --acc:#0a84ff; --accInk:#fff; --accTint:rgba(10,132,255,.24); --accText:#7fbaff;
     --red:#ff453a; --suitRed:#ff6961; --good:#30d158; --goodFill:#30d158;
@@ -27,7 +27,7 @@
 :root[data-theme="dark"]{
   --bg:#07080d; --ink:#f5f5f7; --mute:rgba(235,235,245,.6); --line:rgba(255,255,255,.12);
   --glass:rgba(38,38,48,.5); --glassEdge:rgba(255,255,255,.13); --stick:rgba(30,30,38,.96);
-  --shadow:0 8px 30px rgba(0,0,0,.4);
+  --shadow:0 8px 30px rgba(0,0,0,.4); --sheet:rgba(36,36,44,.9);
   --fill:rgba(255,255,255,.11); --fillPress:rgba(255,255,255,.22);
   --acc:#0a84ff; --accInk:#fff; --accTint:rgba(10,132,255,.24); --accText:#7fbaff;
   --red:#ff453a; --suitRed:#ff6961; --good:#30d158; --goodFill:#30d158;
@@ -52,6 +52,8 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
     radial-gradient(55vmax 45vmax at 25% 100%,var(--wash3),transparent 65%)}
 main{max-width:35rem;margin:0 auto;padding:1rem 0.75rem 3rem}
 h1{font-size:2.125rem;font-weight:700;margin:0.25rem 0.25rem 0.75rem;letter-spacing:-.02em}
+.titlebar{display:flex;align-items:center;justify-content:space-between;gap:.75rem}
+.titlebar .secondary{flex-shrink:0}
 h2{font-size:1.125rem;font-weight:600;margin:0 0 0.5rem;letter-spacing:-.01em}
 button{font:inherit;color:inherit;cursor:pointer;-webkit-user-select:none;user-select:none}
 button:focus-visible,input:focus-visible{outline:3px solid color-mix(in srgb,var(--acc) 55%,transparent);outline-offset:2px}
@@ -163,6 +165,35 @@ tfoot td.p1 .t{color:var(--acc)}
 
 .alert{margin:.5rem 0 .25rem;padding:.625rem .875rem;border-radius:.875rem;color:var(--red);font-size:.9375rem;font-weight:600;background:color-mix(in srgb,var(--red) 12%,transparent)}
 
+/* Past games */
+.rec-head{display:flex;justify-content:space-between;align-items:flex-start;gap:.75rem;margin-bottom:.25rem}
+.rec-w{font-size:1.375rem;font-weight:700;letter-spacing:-.015em;margin-top:.125rem}
+.rec-head .hint{margin:.125rem 0 0}
+.link{border:0;background:transparent;padding:.375rem .25rem;font-weight:600;color:var(--accText)}
+.link.danger{color:var(--red)}
+details{margin-top:.5rem;border-top:1px solid var(--line);padding-top:.5rem}
+summary{cursor:pointer;color:var(--accText);font-weight:600;padding:.25rem 0;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::after{content:" ›";display:inline-block;transition:transform .2s}
+details[open] summary::after{transform:rotate(90deg)}
+details .scroll{margin-top:.5rem}
+.past{display:grid;grid-template-columns:minmax(0,1fr);gap:0 .75rem;align-items:start}
+
+/* Confirmation sheet */
+.scrim{position:fixed;inset:0;z-index:10;background:rgba(0,0,0,.32);animation:fade .2s ease-out}
+.sheet{position:fixed;z-index:11;left:50%;bottom:calc(1rem + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
+  width:min(26rem,calc(100% - 1.5rem));display:flex;flex-direction:column;gap:.5rem;padding:1.25rem;border-radius:1.625rem;
+  background:var(--sheet);border:1px solid var(--glassEdge);box-shadow:0 20px 60px rgba(0,0,0,.3);
+  -webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);animation:rise .25s cubic-bezier(.2,.9,.3,1.1)}
+.sheet h2{margin:0;font-size:1.25rem}
+.sheet .hint{margin:0 0 .5rem}
+.sbtn{width:100%;padding:.875rem;border:0;border-radius:1rem;background:var(--fill);color:var(--accText);font-size:1.0625rem;font-weight:600}
+.sbtn:active{background:var(--fillPress)}
+.sbtn.danger{color:var(--red)}
+@keyframes fade{from{opacity:0}}
+@keyframes rise{from{opacity:0;transform:translate(-50%,1.5rem)}}
+@media (prefers-reduced-motion:reduce){.scrim,.sheet{animation:none}}
+
 /* Wide screens: spread the setup cards and split the game into play + scores columns */
 .setup,.game{display:grid;grid-template-columns:minmax(0,1fr);gap:0 .75rem;align-items:start}
 @media (min-width:700px) and (min-height:560px){
@@ -170,12 +201,13 @@ tfoot td.p1 .t{color:var(--acc)}
   .setup{grid-template-columns:repeat(auto-fit,minmax(21rem,1fr))}
   .start{max-width:28rem;display:block;margin:0 auto}
   .game{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:0 1rem}
+  .past{grid-template-columns:repeat(auto-fill,minmax(22rem,1fr));gap:0 1rem}
 }
 
 /* Fit mode (set by app.js on tablets and desktops): main is exactly one screen tall.
    The history card takes whatever height is left and scrolls internally. */
 .fit main{height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));overflow:auto;padding-bottom:.75rem;display:flex;flex-direction:column}
-.fit h1{flex-shrink:0}
+.fit .titlebar{flex-shrink:0}
 .fit .game{flex:1;min-height:0}
 .fit .game .col{display:flex;flex-direction:column;min-height:0}
 .fit .game .col>*{flex-shrink:0}
