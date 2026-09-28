@@ -24,6 +24,9 @@ function score(r,i){
   const s = S.settings, b = r.bids[i], t = r.tricks[i], made = b===t;
   return (made ? s.bonus : 0) + ((s.onlyIfMade && !made) ? 0 : t * s.perTrick);
 }
+// Competition ranking, so tied players share a place (1, 1, 3)
+const places = arr => arr.map(v => 1 + arr.filter(x => x > v).length);
+const ORD = ['','1st','2nd','3rd'];
 function totals(){ return S.players.map((_,i) => S.rounds.reduce((a,r) => a + score(r,i), 0)); }
 function newCur(){ const n = S.players.length; return {bids:Array(n).fill(0), tricks:Array(n).fill(0)}; }
 const DECK = 52, MAX_CARDS = 26;
@@ -113,16 +116,20 @@ function gameHTML(){
   }
 
   const ranked = S.players.map((_,i)=>i).sort((a,b)=>tot[b]-tot[a]);
-  const best = Math.max(...tot);
+  const best = Math.max(...tot), place = places(tot);
   const standings = `<section class="card"><h2>Scores</h2>
-    ${ranked.map((i,k)=>`<div class="stand ${tot[i]===best&&ri>0?'lead':''}"><span class="pos">${k+1}</span><span class="nm">${nm(i)}</span><span class="pts">${tot[i]}</span></div>`).join('')}
+    ${ranked.map((i,k)=>`<div class="stand ${tot[i]===best&&ri>0?'lead':''}"><span class="pos">${place[i]}</span><span class="nm">${nm(i)}</span><span class="pts">${tot[i]}</span></div>`).join('')}
   </section>`;
 
   const history = ri ? `<section class="card hist"><h2>Rounds</h2><div class="scroll"><table>
-    <thead><tr><th>Cards</th>${S.players.map((_,i)=>`<th>${nm(i)}</th>`).join('')}</tr></thead>
-    <tbody>${S.rounds.map(r=>`<tr><td>${r.cards}</td>${S.players.map((_,i)=>`<td class="${r.bids[i]===r.tricks[i]?'made':''}"><span class="s">${score(r,i)}</span><span class="bt">${r.bids[i]}/${r.tricks[i]}</span></td>`).join('')}</tr>`).join('')}</tbody>
-    <tfoot><tr><td>Total</td>${tot.map(t=>`<td>${t}</td>`).join('')}</tr></tfoot>
-  </table></div><p class="hint">Small figures are bid / tricks won.</p></section>` : '';
+    <thead><tr><th>Round</th>${S.players.map((_,i)=>`<th>${nm(i)}</th>`).join('')}</tr></thead>
+    <tbody>${S.rounds.map((r,k)=>{
+      const pts = S.players.map((_,i)=>score(r,i)), top = Math.max(...pts), tr = TRUMPS[k % TRUMPS.length];
+      const suit = S.settings.trumps ? `<span class="suit ${tr[2]?'red':''}">${tr[0] || 'NT'}</span>` : '';
+      return `<tr><td>${r.cards}${suit}</td>${pts.map((p,i)=>`<td class="${r.bids[i]===r.tricks[i]?'made':''} ${p===top&&top>0?'top':''}"><span class="s">${p}</span><span class="bt">${r.bids[i]}/${r.tricks[i]}</span></td>`).join('')}</tr>`;
+    }).join('')}</tbody>
+    <tfoot><tr><td>Total</td>${tot.map((t,i)=>`<td class="${place[i]<=3?'p'+place[i]:''}">${place[i]<=3?`<span class="place">${ORD[place[i]]}</span>`:''}${t}</td>`).join('')}</tr></tfoot>
+  </table></div><p class="hint">Small figures are bid / tricks won. Highlighted: top score that round.</p></section>` : '';
 
   const foot = `<div class="foot">
     <button class="secondary" data-act="undo" ${ri===0&&S.phase==='bid'?'disabled':''}>Undo</button>
