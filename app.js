@@ -37,6 +37,10 @@ function deckWarning(){
   return `<p class="alert">${n} players × ${m} cards needs ${need} cards, more than a standard ${DECK}-card deck. Use ${Math.ceil(need/DECK)} decks, or deal at most ${capCards()}.</p>`;
 }
 
+const initial = i => esc((S.players[i] || '').trim().charAt(0).toUpperCase()) || i + 1;
+// Each player keeps a colour (by seat) so they're easy to find across the whole screen
+const av = i => `<span class="av pc${i % 7}" aria-hidden="true">${initial(i)}</span>`;
+
 function stepper(key, val, lo, hi){
   return `<div class="step"><button data-act="dec" data-k="${key}" aria-label="Decrease" ${val<=lo?'disabled':''}>−</button><output>${val}</output><button data-act="inc" data-k="${key}" aria-label="Increase" ${val>=hi?'disabled':''}>+</button></div>`;
 }
@@ -50,7 +54,7 @@ function setupHTML(){
   <div class="setup">
   <section class="card"><h2>Players</h2>
     <p class="hint">In seating order, clockwise. The first player deals first.</p>
-    ${S.players.map((p,i)=>`<div class="row"><input class="name" data-i="${i}" value="${esc(p)}" placeholder="Player ${i+1}" autocomplete="off" autocapitalize="words"><button class="icon" data-act="rm" data-i="${i}" ${n<=2?'disabled':''} aria-label="Remove player">✕</button></div>`).join('')}
+    ${S.players.map((p,i)=>`<div class="row">${av(i)}<input class="name" data-i="${i}" value="${esc(p)}" placeholder="Player ${i+1}" autocomplete="off" autocapitalize="words"><button class="icon" data-act="rm" data-i="${i}" ${n<=2?'disabled':''} aria-label="Remove player">✕</button></div>`).join('')}
     ${n<7?`<button class="ghost" data-act="add">Add player</button>`:''}
   </section>
   <section class="card"><h2>Rounds</h2>
@@ -79,16 +83,16 @@ function gameHTML(){
 
   if(done){
     const best = Math.max(...tot), winners = S.players.filter((_,i)=>tot[i]===best).map(esc);
-    top = `<section class="card over"><div class="hint">Game over</div><div class="w">${winners.join(' & ')}</div><div>${best} points</div></section>`;
+    top = `<section class="card over"><div class="eyebrow">Game over</div><div class="w">${winners.join(' & ')} ${winners.length>1?'win':'wins'}</div><div class="hint">${best} points</div></section>`;
   } else {
     const cards = sq[ri], dealer = ri % n, c = S.cur;
     const order = [...Array(n)].map((_,k)=>(dealer+1+k)%n);
     const sumB = c.bids.reduce((a,b)=>a+b,0), sumT = c.tricks.reduce((a,b)=>a+b,0);
     const tr = TRUMPS[ri % TRUMPS.length];
-    top = `<section class="table">
-      <div class="big">${cards}<small>card${cards>1?'s':''}</small></div>
-      <div class="meta">Round ${ri+1} of ${sq.length} · ${nm(dealer)} deals</div>
-      ${S.settings.trumps ? `<div class="trump ${tr[2]?'red':''}">${tr[0]} ${tr[1]}</div>` : `<div class="trump">${S.phase==='bid'?'Bidding':'Tricks'}</div>`}
+    top = `<section class="round">
+      <div><div class="eyebrow">Round ${ri+1} of ${sq.length} · ${nm(dealer)} deals</div>
+      <div class="big">${cards} card${cards>1?'s':''}</div></div>
+      ${S.settings.trumps ? `<div class="trump ${tr[2]?'red':''}">${tr[0] ? `<span class="sym">${tr[0]}</span>` : ''}${tr[1]}</div>` : ''}
     </section>`;
 
     if(S.phase==='bid'){
@@ -99,7 +103,7 @@ function gameHTML(){
       }
       const diff = sumB - cards;
       top += `<section class="card"><h2>Bids</h2>
-        ${order.map(i=>`<div class="prow"><div class="pname"><b>${nm(i)}${i===dealer?'<span class="tag">Dealer</span>':''}</b><small>${tot[i]} pts${i===dealer&&banned!==null?` · can't bid ${banned}`:''}</small></div>${stepper('bid:'+i, c.bids[i], 0, cards)}</div>`).join('')}
+        ${order.map(i=>`<div class="prow"><div class="pname">${av(i)}<div><b>${nm(i)}${i===dealer?'<span class="tag">Dealer</span>':''}</b><small>${tot[i]} pts${i===dealer&&banned!==null?` · can't bid ${banned}`:''}</small></div></div>${stepper('bid:'+i, c.bids[i], 0, cards)}</div>`).join('')}
         <div class="status"><span>Total bid <strong>${sumB}</strong> of ${cards}</span>
           <span class="${violated?'warn':''}">${violated ? `Dealer can't bid ${banned}` : diff===0 ? 'Even' : diff>0 ? `${diff} over` : `${-diff} under`}</span></div>
         <button class="primary" data-act="lock" ${violated?'disabled':''}>Lock in bids</button>
@@ -107,7 +111,7 @@ function gameHTML(){
     } else {
       const ok = sumT === cards;
       top += `<section class="card"><h2>Tricks won</h2>
-        ${order.map(i=>{const made=c.tricks[i]===c.bids[i];return `<div class="prow ${made?'made':''}"><div class="pname"><b>${nm(i)}${i===dealer?'<span class="tag">Dealer</span>':''}</b><small>Bid ${c.bids[i]} · <span class="${made?'ok':''}">${made?'made':'missed'}</span></small></div>${stepper('trk:'+i, c.tricks[i], 0, cards)}</div>`}).join('')}
+        ${order.map(i=>{const made=c.tricks[i]===c.bids[i];return `<div class="prow ${made?'made':''}"><div class="pname">${av(i)}<div><b>${nm(i)}${i===dealer?'<span class="tag">Dealer</span>':''}</b><small>Bid ${c.bids[i]} · <span class="${made?'ok':''}">${made?'made':'missed'}</span></small></div></div>${stepper('trk:'+i, c.tricks[i], 0, cards)}</div>`}).join('')}
         <div class="status"><span>Tricks <strong>${sumT}</strong> of ${cards}</span>
           <span class="${ok?'ok':'warn'}">${ok?'Adds up':sumT>cards?`${sumT-cards} too many`:`${cards-sumT} missing`}</span></div>
         <div class="actions"><button class="secondary" data-act="back">Edit bids</button><button class="primary" data-act="score" ${ok?'':'disabled'}>Score round</button></div>
@@ -118,11 +122,11 @@ function gameHTML(){
   const ranked = S.players.map((_,i)=>i).sort((a,b)=>tot[b]-tot[a]);
   const best = Math.max(...tot), place = places(tot);
   const standings = `<section class="card"><h2>Scores</h2>
-    ${ranked.map((i,k)=>`<div class="stand ${tot[i]===best&&ri>0?'lead':''}"><span class="pos">${place[i]}</span><span class="nm">${nm(i)}</span><span class="pts">${tot[i]}</span></div>`).join('')}
+    ${ranked.map((i,k)=>`<div class="stand ${tot[i]===best&&ri>0?'lead':''}"><span class="pos">${place[i]}</span>${av(i)}<span class="nm">${nm(i)}</span><span class="pts">${tot[i]}</span></div>`).join('')}
   </section>`;
 
   const history = ri ? `<section class="card hist"><h2>Rounds</h2><div class="scroll"><table>
-    <thead><tr><th>Round</th>${S.players.map((_,i)=>`<th>${nm(i)}</th>`).join('')}</tr></thead>
+    <thead><tr><th>Round</th>${S.players.map((_,i)=>`<th class="pc${i % 7}">${nm(i)}</th>`).join('')}</tr></thead>
     <tbody>${S.rounds.map((r,k)=>{
       const pts = S.players.map((_,i)=>score(r,i)), top = Math.max(...pts), tr = TRUMPS[k % TRUMPS.length];
       const suit = S.settings.trumps ? `<span class="suit ${tr[2]?'red':''}">${tr[0] || 'NT'}</span>` : '';
@@ -215,7 +219,11 @@ document.addEventListener('click', e => {
   act(b.dataset.act, b.dataset);
 });
 document.addEventListener('input', e => {
-  if(e.target.classList.contains('name')){ S.players[+e.target.dataset.i] = e.target.value; save(); }
+  if(e.target.classList.contains('name')){
+    const i = +e.target.dataset.i;
+    S.players[i] = e.target.value; save();
+    e.target.previousElementSibling.textContent = e.target.value.trim().charAt(0).toUpperCase() || i + 1;
+  }
 });
 document.addEventListener('change', e => {
   const k = e.target.dataset && e.target.dataset.set;
