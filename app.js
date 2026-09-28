@@ -4,6 +4,7 @@ let S = load() || fresh();
 if(!S.id) S.id = newId();
 let H = loadHistory();       // past games, newest first
 let view = null, sheet = null; // screen and open dialog; not saved
+let reveal = false;            // peeking at hidden scores; hides again after the next round
 
 function fresh(){
   return {players:['',''], phase:'setup', rounds:[], cur:null,
@@ -64,8 +65,8 @@ const av = (i, players) => `<span class="av pc${i % 7}" aria-hidden="true">${ini
 function stepper(key, val, lo, hi){
   return `<div class="step"><button data-act="dec" data-k="${key}" aria-label="Decrease" ${val<=lo?'disabled':''}>−</button><output>${val}</output><button data-act="inc" data-k="${key}" aria-label="Increase" ${val>=hi?'disabled':''}>+</button></div>`;
 }
-function toggle(k, label, on){
-  return `<label class="tog"><span>${label}</span><input type="checkbox" data-set="${k}" ${on?'checked':''}></label>`;
+function toggle(k, label, on, note){
+  return `<label class="tog"><span>${label}${note ? `<small>${note}</small>` : ''}</span><input type="checkbox" data-set="${k}" ${on?'checked':''}></label>`;
 }
 
 function setupHTML(){
@@ -90,7 +91,10 @@ function setupHTML(){
     <div class="field"><span>Points per trick</span>${stepper('per', s.perTrick, 0, 10)}</div>
     ${toggle('onlyIfMade','Tricks only score if the bid is made', s.onlyIfMade)}
     ${toggle('hook',"Dealer can't make bids add up to the cards", s.hook)}
+  </section>
+  <section class="card"><h2>Display</h2>
     ${toggle('trumps','Show trump suit each round', s.trumps)}
+    ${toggle('hideScores','Hide scores until revealed', s.hideScores, 'Totals stay secret until someone taps Reveal. Always shown at the end.')}
   </section>
   </div>
   <button class="primary start" data-act="start">Start game</button>`;
@@ -99,6 +103,8 @@ function setupHTML(){
 function gameHTML(){
   const sq = seq(), n = S.players.length, ri = S.rounds.length, done = ri >= sq.length, tot = totals();
   const nm = i => esc(S.players[i]);
+  // Hidden scores: conceal anything that gives away the standings until someone reveals them
+  const hidden = S.settings.hideScores && !reveal && !done;
   let top = '';
 
   if(done){
@@ -123,7 +129,7 @@ function gameHTML(){
       }
       const diff = sumB - cards;
       top += `<section class="card"><h2>Bids</h2>
-        ${order.map(i=>`<div class="prow"><div class="pname">${av(i)}<div><b>${nm(i)}${i===dealer?'<span class="tag">Dealer</span>':''}</b><small>${tot[i]} pts${i===dealer&&banned!==null?` · can't bid ${banned}`:''}</small></div></div>${stepper('bid:'+i, c.bids[i], 0, cards)}</div>`).join('')}
+        ${order.map(i=>`<div class="prow"><div class="pname">${av(i)}<div><b>${nm(i)}${i===dealer?'<span class="tag">Dealer</span>':''}</b>${(()=>{ const bits = [hidden ? '' : `${tot[i]} pts`, i===dealer&&banned!==null ? `can't bid ${banned}` : ''].filter(Boolean); return bits.length ? `<small>${bits.join(' · ')}</small>` : ''; })()}</div></div>${stepper('bid:'+i, c.bids[i], 0, cards)}</div>`).join('')}
         <div class="status"><span>Total bid <strong>${sumB}</strong> of ${cards}</span>
           <span class="${violated?'warn':''}">${violated ? `Dealer can't bid ${banned}` : diff===0 ? 'Even' : diff>0 ? `${diff} over` : `${-diff} under`}</span></div>
         <button class="primary" data-act="lock" ${violated?'disabled':''}>Lock in bids</button>
@@ -139,14 +145,20 @@ function gameHTML(){
     }
   }
 
-  const ranked = S.players.map((_,i)=>i).sort((a,b)=>tot[b]-tot[a]);
+  const ranked = S.players.map((_,i)=>i);
+  if(!hidden) ranked.sort((a,b)=>tot[b]-tot[a]);   // seat order while hidden, so the order doesn't leak
   const best = Math.max(...tot), place = places(tot);
-  const standings = `<section class="card"><h2>Scores</h2>
-    ${ranked.map((i,k)=>`<div class="stand ${tot[i]===best&&ri>0?'lead':''}"><span class="pos">${place[i]}</span>${av(i)}<span class="nm">${nm(i)}</span><span class="pts">${tot[i]}</span></div>`).join('')}
+  const peek = S.settings.hideScores && !done && ri > 0
+    ? `<button class="link" data-act="reveal">${reveal ? 'Hide' : 'Reveal'}</button>` : '';
+  const standings = `<section class="card"><div class="cardhead"><h2>Scores</h2>${peek}</div>
+    ${hidden && ri ? `<p class="hint">Scores are hidden. Tap Reveal to take a look.</p>` : ''}
+    ${ranked.map((i,k)=>hidden
+      ? `<div class="stand"><span class="pos"></span>${av(i)}<span class="nm">${nm(i)}</span><span class="pts masked" aria-label="Hidden">•••</span></div>`
+      : `<div class="stand ${tot[i]===best&&ri>0?'lead':''}"><span class="pos">${place[i]}</span>${av(i)}<span class="nm">${nm(i)}</span><span class="pts">${tot[i]}</span></div>`).join('')}
   </section>`;
 
-  const history = ri ? `<section class="card hist"><h2>Rounds</h2><div class="scroll">${scoreTable(S.players, S.rounds, S.settings)}</div>
-    <p class="hint">Small figures are bid / tricks won. Highlighted: top score that round.</p></section>` : '';
+  const history = ri ? `<section class="card hist"><h2>Rounds</h2><div class="scroll">${scoreTable(S.players, S.rounds, S.settings, hidden)}</div>
+    <p class="hint">${hidden ? 'Showing bid / tricks won. Green: made the bid.' : 'Small figures are bid / tricks won. Highlighted: top score that round.'}</p></section>` : '';
 
   const foot = `<div class="foot">
     <button class="secondary" data-act="undo" ${ri===0&&S.phase==='bid'?'disabled':''}>${undoLabel()}</button>
@@ -164,16 +176,20 @@ function undoLabel(){
   return S.rounds.length ? `Undo round ${S.rounds.length}` : 'Undo';
 }
 
-function scoreTable(players, rounds, s){
+function scoreTable(players, rounds, s, hideTotals){
   const tot = totals(players, rounds, s), place = places(tot);
   return `<table>
     <thead><tr><th>Round</th>${players.map((p,i)=>`<th class="pc${i % 7}">${esc(p)}</th>`).join('')}</tr></thead>
     <tbody>${rounds.map((r,k)=>{
       const pts = players.map((_,i)=>score(r,i,s)), top = Math.max(...pts), tr = TRUMPS[k % TRUMPS.length];
       const suit = s.trumps ? `<span class="suit ${tr[2]?'red':''}">${tr[0] || 'NT'}</span>` : '';
-      return `<tr><td>${r.cards}${suit}</td>${pts.map((p,i)=>`<td class="${r.bids[i]===r.tricks[i]?'made':''} ${p===top&&top>0?'top':''}"><span class="s">${p}</span><span class="bt">${r.bids[i]}/${r.tricks[i]}</span></td>`).join('')}</tr>`;
+      return `<tr><td>${r.cards}${suit}</td>${pts.map((p,i)=>hideTotals
+        ? `<td class="${r.bids[i]===r.tricks[i]?'made':''}"><span class="s">${r.bids[i]}/${r.tricks[i]}</span></td>`
+        : `<td class="${r.bids[i]===r.tricks[i]?'made':''} ${p===top&&top>0?'top':''}"><span class="s">${p}</span><span class="bt">${r.bids[i]}/${r.tricks[i]}</span></td>`).join('')}</tr>`;
     }).join('')}</tbody>
-    <tfoot><tr><td>Total</td>${tot.map((t,i)=>`<td class="${place[i]<=3?'p'+place[i]:''}"><span class="place">${ORD[place[i]] || ''}</span><span class="t">${t}</span></td>`).join('')}</tr></tfoot>
+    <tfoot><tr><td>Total</td>${tot.map((t,i)=>hideTotals
+      ? `<td><span class="place"></span><span class="t masked">•••</span></td>`
+      : `<td class="${place[i]<=3?'p'+place[i]:''}"><span class="place">${ORD[place[i]] || ''}</span><span class="t">${t}</span></td>`).join('')}</tr></tfoot>
   </table>`;
 }
 
@@ -285,12 +301,12 @@ function act(a, d){
     case 'dec': bump(d.k, -1); break;
     case 'start':
       S.players = S.players.map((p,i)=>p.trim() || `Player ${i+1}`);
-      S.id = newId(); S.rounds = []; S.cur = newCur(); S.phase = 'bid'; window.scrollTo(0,0); break;
+      S.id = newId(); reveal = false; S.rounds = []; S.cur = newCur(); S.phase = 'bid'; window.scrollTo(0,0); break;
     case 'lock': S.cur.tricks = [...S.cur.bids]; S.phase = 'tricks'; break;
     case 'back': S.phase = 'bid'; break;
     case 'score':
       S.rounds.push({cards: seq()[S.rounds.length], bids:[...S.cur.bids], tricks:[...S.cur.tricks]});
-      S.cur = newCur(); S.phase = 'bid';
+      S.cur = newCur(); S.phase = 'bid'; reveal = false;
       if(S.rounds.length >= seq().length) archive();
       window.scrollTo(0,0); break;
     case 'undo': sheet = {kind:'undo'}; break;
@@ -306,6 +322,7 @@ function act(a, d){
     case 'end-save': archive(); endGame(); sheet = null; break;
     case 'end-discard': endGame(); sheet = null; break;
     case 'cancel': sheet = null; break;
+    case 'reveal': reveal = !reveal; break;
     case 'history': view = 'history'; window.scrollTo(0,0); break;
     case 'setup': view = null; break;
     case 'del': sheet = {kind:'del', id:d.id}; break;
