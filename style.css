@@ -92,11 +92,16 @@ td .suit{margin-left:.3rem;font-weight:600;color:var(--ink)}
 td .suit.red{color:var(--red)}
 td.top{background:color-mix(in srgb,var(--brass) 18%,transparent);border-radius:.375rem}
 td.top .s{font-weight:800}
-tfoot .place{display:block;width:max-content;margin:0 auto .125rem;padding:0 .375rem;border-radius:.375rem;font-size:.75rem;font-weight:700;line-height:1.35;color:#fff;background:var(--mute)}
+tfoot .place{display:block;width:max-content;min-width:1.5rem;height:1.05rem;margin:0 auto .125rem;padding:0 .375rem;border-radius:.375rem;font-size:.75rem;font-weight:700;line-height:1.35;color:#fff;background:var(--mute)}
 tfoot .p1 .place{background:var(--brass)}
 tfoot .p2 .place{background:#8a949b}
 tfoot .p3 .place{background:#a86d3f}
-tfoot td.p1{font-size:1.25rem;color:var(--acc)}
+tfoot .place:empty{visibility:hidden}
+/* Every total cell has a badge slot, so the numbers stay on one line */
+tfoot td{vertical-align:bottom}
+tfoot .t{display:block;line-height:1.5rem}
+tfoot td:first-child{line-height:1.5rem}
+tfoot td.p1 .t{color:var(--acc)}
 .foot{display:flex;gap:0.5rem;justify-content:space-between;margin-top:0.25rem}
 .over{text-align:center;padding:1.125rem 0.875rem}
 .over .w{font-size:1.875rem;font-weight:700;margin:0.25rem 0}

@@ -128,7 +128,7 @@ function gameHTML(){
       const suit = S.settings.trumps ? `<span class="suit ${tr[2]?'red':''}">${tr[0] || 'NT'}</span>` : '';
       return `<tr><td>${r.cards}${suit}</td>${pts.map((p,i)=>`<td class="${r.bids[i]===r.tricks[i]?'made':''} ${p===top&&top>0?'top':''}"><span class="s">${p}</span><span class="bt">${r.bids[i]}/${r.tricks[i]}</span></td>`).join('')}</tr>`;
     }).join('')}</tbody>
-    <tfoot><tr><td>Total</td>${tot.map((t,i)=>`<td class="${place[i]<=3?'p'+place[i]:''}">${place[i]<=3?`<span class="place">${ORD[place[i]]}</span>`:''}${t}</td>`).join('')}</tr></tfoot>
+    <tfoot><tr><td>Total</td>${tot.map((t,i)=>`<td class="${place[i]<=3?'p'+place[i]:''}"><span class="place">${ORD[place[i]] || ''}</span><span class="t">${t}</span></td>`).join('')}</tr></tfoot>
   </table></div><p class="hint">Small figures are bid / tricks won. Highlighted: top score that round.</p></section>` : '';
 
   const foot = `<div class="foot">
